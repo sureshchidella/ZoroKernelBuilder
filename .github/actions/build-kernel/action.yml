@@ -244,12 +244,31 @@ runs:
     - name: Setup AnyKernel3
       shell: bash
       working-directory: ${{ github.workspace }}
+      env:
+        AK3_ARM64_TOOLS_COMMIT: cc7d2cee9b1b4298f6ab8666eb4486dea342748c
+        AK3_ARM64_BUSYBOX_SHA256: c629fce4b0dd3ba9775f851d0941e74582115f423258d3a79800f2bd11d30f5c
+        AK3_ARM64_MAGISKBOOT_SHA256: 97e9ec75731103d31c9e1effca7a50c6444309ce8f78c2ec27e9fe721da4bb54
       run: |
-        set -o pipefail
+        set -euo pipefail
         {
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3.git anykernel
           cp kernel-source/anykernel/anykernel.sh anykernel/anykernel.sh
           cp -r kernel-source/anykernel/tools/* anykernel/tools/
+
+          git -C anykernel fetch --depth=1 origin \
+            refs/heads/arm64-tools:refs/remotes/origin/arm64-tools
+          test "$(git -C anykernel rev-parse refs/remotes/origin/arm64-tools)" = "$AK3_ARM64_TOOLS_COMMIT"
+          for tool in busybox magiskboot; do
+            git -C anykernel show "$AK3_ARM64_TOOLS_COMMIT:$tool" > "anykernel/tools/$tool"
+            chmod 0755 "anykernel/tools/$tool"
+            readelf -h "anykernel/tools/$tool" | grep -q 'Machine:.*AArch64'
+          done
+          printf '%s  %s\n' "$AK3_ARM64_BUSYBOX_SHA256" anykernel/tools/busybox | sha256sum --check --status
+          printf '%s  %s\n' "$AK3_ARM64_MAGISKBOOT_SHA256" anykernel/tools/magiskboot | sha256sum --check --status
+          rm -rf anykernel/tools/arm anykernel/tools/x86
+          test -x anykernel/tools/busybox
+          test -x anykernel/tools/magiskboot
+          echo "[+] AnyKernel3 ARM64 tools verified at $AK3_ARM64_TOOLS_COMMIT"
         } 2>&1 | tee -a "${GITHUB_WORKSPACE}/build.log"
 
     - name: Scout Checkpoint
